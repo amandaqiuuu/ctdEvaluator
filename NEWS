@@ -1,0 +1,9 @@
+version 0.0.2
+  * Added `SingleCellExperiment` to imports in `DESCRIPTION` and `NAMESPACE`.
+  * Removed Vignettes for a major overhaul. They will be reinstated in a future update with new content.
+  * Various modifications on code to incorporate SingleCellExperiment object.
+
+
+Create version 0.0.1
+  * package created on June 12, 2021
+  

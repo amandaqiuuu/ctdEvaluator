@@ -1,0 +1,20 @@
+export(
+  MuSiCEvaluator,
+  MuSiCEvaluator2scRNAseq
+)
+
+import(Biobase)
+import(MuSiC)
+import(stats)
+import(ggplot2)
+import(xbioc)
+import(nnls)
+import(iPlotFun)
+import(SummarizedExperiment)
+import(SingleCellExperiment)
+import(knitr)
+import(rmarkdown)
+
+importFrom("xbioc", "pVar")
+
+

@@ -1,0 +1,916 @@
+---
+title: "Functions in ctdEvaluator Package"
+author:
+- affiliation: Sanofi
+  name: Weiliang Qiu and Mindy Zhang
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    number_sections: true
+    toc: true
+header-includes:
+- \usepackage{setspace}
+- \doublespacing
+vignette: |
+  %\VignetteIndexEntry{Functions in ctdEvaluator Package} 
+  %\VignetteKeyword{ctdEvaluator} 
+  %\VignetteEngine{knitr::rmarkdown} 
+  \usepackage[utf8](inputenc)
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 12, 
+  fig.height = 8,
+  fig.align = "center"
+)
+```
+
+
+# Introduction
+
+There are abundant Bulk RNAseq datasets publicly available, while single cell RNAseq (scRNAseq) datasets are still expensive to obtain. One limitation of Bulk RNAseq datasets is that its assumption (i.e., all cells in a tissue have the same gene expression) is usually violated. This would result in misleading results if we do not handle potential confounding effect of cell type before down-streaming analysis, such as differential gene expression analysis. To utilize bulk RNAseq datasets, several cell-type deconvolution methods have been proposed to restore cell type information for bulk RNAseq datasets. However, it is challenging to evaluate the estimated cell type proportions for a bulk RNAseq data with unknown cell-type information. This R package *ctdEvaluator* contains functions to address this challenging question.
+
+We implemented our novel evaluation methods in the current version of *ctdEvaluator*, which contains 2 functions *MuSiCEvaluator2scRNAseq* (input 2 scRNAseq datasets: one scRNAseq dataset as reference; the other scRNAseq dataset used to construct bulk RNAseq with known cell type proportions) and *MuSiCEvaluator* (input 1 scRNAseq dataset as reference and one bulk RNAseq dataset whose cell type proportions to be estimated). 
+The function *MuSiCEvaluator2scRNAseq* can be used to evaluate performance of MuSiC cell type deconvolution. The function 
+*MuSiCEvaluator* can be used to estimate cell type proportions in real applications.
+
+# Dependent R/Bioconductor packages
+
+*ctdEvaluator* depends on R package *MuSiC*, *iPlotFun*, and Bioconductor package *Biobase*.
+
+*MuSiC* R package has not been published on CRAN or Bioconductor yet. You can install it via Wang et al's instruction in their github website https://github.com/xuranw/MuSiC and their tutorial website https://xuranw.github.io/MuSiC/articles/MuSiC.html, which is copied below:
+```{r eval = F, echo = T, message = F}
+
+# install devtools if necessary
+install.packages('devtools')
+
+# install the MuSiC package
+devtools::install_github('xuranw/MuSiC')
+
+# load
+library(MuSiC)
+
+```
+
+
+*iPlotFun* is an R package developed by Weiliang Qiu and Luc Essermeant to facilitate data visualization for NCES (non-clinical efficacy & safety) projects. Please contact Weiliang Qiu (Weiliang.Qiu@sanofi.com) to get a copy of *iPlotFun* R package.
+
+
+To install *Biobase*, please use the following commands based on the website https://bioconductor.org/packages/release/bioc/html/Biobase.html:
+```{r eval = F, echo = T, message = F}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("Biobase")
+
+```
+
+# Datasets
+
+*ctdEvaluator* package contains 4 datasets: 3 scRNAseq datasets and 1 bulk RNAseq dataset.
+
+## scRNAseq: esRef.EMTAB
+
+The dataset *esRef.EMTAB* is an ExpressionSet object
+storing a scRNAseq dataset that can be used as a reference scRNAseq in MuSiC algorithm. It contains 25453 genes and 748 samples (i.e., cells).
+The 748 cells belong to 6 non-T2D subjects.
+Among the 748 cells, there are 4 cell types: alpha ($n=443$ cells), beta ($n=171$ cells), delta ($n=59$ cells), and gamma ($n=75$ cells). This dataset is a subset of EMTAB scRNAseq dataset listed in Wang et al.'s tutorial website https://xuranw.github.io/MuSiC/articles/MuSiC.html.
+
+To load *esRef.EMTAB*, we can use the following R code:
+```{r eval = T, echo = T, message = F}
+# load R package ctdEvaluator
+library(ctdEvaluator)
+
+# load data
+data(esRef.EMTAB)
+
+print(esRef.EMTAB)
+
+# unique subject ids
+print(unique(esRef.EMTAB$SubjectName))
+
+# frequencies of cell types
+print(table(esRef.EMTAB$cellType))
+
+```
+
+## scRNAseq: esRef.EMTAB.fakeCT
+
+The dataset *esRef.EMTAB.fakeCT* is an ExpressionSet object
+storing a scRNAseq dataset that can be used as a reference scRNAseq in MuSiC algorithm. It contains 25453 genes and 299 samples (i.e., cells).
+The 299 cells belong to 6 non-T2D subjects.
+Among the 748 cells, there are 4 cell types: acinar ($n=112$ cells), ductal ($n=135$ cells), PSC ($n=23$ cells), and unclassified endocrine ($n=29$ cells). 
+
+We relabeled the cell types so that we can use it as a reference scRNAseq to estimate cell types (alpha, beta, delta, and gamma) using MuSiC and expect MuSiC could not perform well for this scenario.
+
+\begin{tabular}{l|l}
+\hline
+true cell type & relabeled cell type\\
+\hline
+acinar & gamma\\
+ductal & delta \\
+PSC & alpha\\
+unclassified endocrine & beta\\
+\hline
+\end{tabular}
+
+To load *esRef.EMTAB.fakeCT*, we can use the following R code:
+```{r eval = T, echo = T, message = F}
+# load data
+data(esRef.EMTAB.fakeCT)
+
+print(esRef.EMTAB.fakeCT)
+
+# unique subject ids
+print(unique(esRef.EMTAB.fakeCT$SubjectName))
+
+# frequencies of true cell types
+print(table(as.character(esRef.EMTAB.fakeCT$cellType.true)))
+
+# frequencies of relabeled cell types
+print(table(esRef.EMTAB.fakeCT$cellType))
+
+# cross table
+
+print(table(as.character(esRef.EMTAB.fakeCT$cellType.true), esRef.EMTAB.fakeCT$cellType))
+
+
+```
+
+## scRNAseq: es4Bulk.XinT2D
+
+The dataset *es4Bulk.XinT2D* is an ExpressionSet object
+storing a scRNAseq dataset that can be used to construct Bulk RNAseq with known cell type proportions. It contains 39849 genes and 1492 samples (i.e., cells).
+The 1492 cells belong to 6 T2D subjects and 12 non-T2D subjects.
+Among the 1492 cells, there are 4 cell types: alpha ($n=886$ cells), beta ($n=472$ cells), delta ($n=49$ cells), and gamma ($n=85$ cells). This dataset is listed in Wang et al.'s tutorial website https://xuranw.github.io/MuSiC/articles/MuSiC.html.
+
+To load *es4Bulk.XinT2D*, we can use the following R code:
+```{r eval = T, echo = T, message = F}
+
+# load data
+data(es4Bulk.XinT2D)
+
+print(es4Bulk.XinT2D)
+
+# unique subject ids
+print(unique(es4Bulk.XinT2D$SubjectName))
+
+# frequencies of cell types
+print(table(es4Bulk.XinT2D$cellType))
+
+```
+
+
+## bulk RNAseq: esBulk.XinT2D
+
+The dataset *esBulk.XinT2D* is an ExpressionSet object
+storing a Bulk RNAseq dataset that was constructed by the scRNAseq dataset *es4Bulk.XinT2D* by averaging gene expression across all cells for each subject. The real cell type proportions are hence known for *esBulk.XinT2D*. It contains 39849 genes and 18 samples (i.e., subjects).
+
+To load *esBulk.XinT2D*, we can use the following R code:
+```{r eval = T, echo = T, message = F}
+
+# load data
+data(esBulk.XinT2D)
+
+print(esBulk.XinT2D)
+
+# unique subject ids
+print(unique(esBulk.XinT2D$SubjectName))
+
+# true cell type proportions
+pDat = pData(esBulk.XinT2D)
+print(dim(pDat))
+print(pDat)
+
+
+```
+
+
+
+# Examples
+
+## es4Bulk.XinT2D to construct bulk RNAseq and esRef.EMTAB as reference
+
+We first illustrate the usage of the function *MuSiCEvaluator2scRNAseq* by using *es4Bulk.XinT2D* to construct bulk RNAseq and using *esRef.EMTAB* as reference. The main purpose of the function *MuSiCEvaluator2scRNAseq* is to check the performance of MuSiC since cell type proportions in ``Bulk'' RNAseq dataset are known.
+
+```{r message = F, eval = T, echo = T, warning = F}
+#####################
+# load plot functions
+library(iPlotFun)
+
+#############
+# cell type deconvolution for the bulk RNAseq to be constructed 
+#   by the scRNAseq data es4Bulk.XinT2D
+# Reference scRNAseq is esRef.EMTAB
+#############
+
+# load reference scRNAseq data
+data(esRef.EMTAB)
+print(esRef.EMTAB)
+
+# load scRNAseq data to be used to construct bulk RNAseq data
+data(es4Bulk.XinT2D)
+print(es4Bulk.XinT2D)
+
+
+# First do cell type deconvolution, then evaluate the estimates.
+# For testing purpose, we set number of bootstrapping 'nBoot=3'.
+# In real applications, please set nBoot >= 20.
+# Since it is computationally intensive, it would take a long running time 
+#   when 'nBoot' is too large.
+
+nBoot = 3
+nPerm = NULL
+res = MuSiCEvaluator2scRNAseq(es4Bulk = es4Bulk.XinT2D, esRef = esRef.EMTAB, 
+                              sid = "SubjectName", 
+                              cellType = "cellType", 
+                              nBoot = nBoot, 
+                              seed = 1234567,
+                              nPerm = nPerm)
+print(names(res))
+
+```
+
+
+The trajectories of real cell type proportions for reference scRNAseq data are shown below:
+
+```{r message = F, eval = T, echo = T, warning = F}
+
+print(head(res$prop.real.Ref.LF))
+
+g = iPlotFun::trajPlot1Grp(dat = res$prop.real.Ref.LF, 
+         time = "cellType", 
+         y = "prop.real", 
+         sid = "sid", 
+         numericTime = FALSE,
+         order.time = NULL, 
+         xlab = "", 
+         ylab = "real cell type proportions", 
+         title = "esRef.EMTAB", 
+         xAngle = 45
+)
+print(g)
+
+```
+
+
+The trajectories of real cell type proportions for bulk data are shown below:
+
+```{r message = F, eval = T, echo = T, warning = F}
+
+print(head(res$prop.real.Bulk.LF))
+
+# extract disease info
+ttFrame = res$prop.real.Bulk.LF
+sid = ttFrame$sid
+T2D = unlist(sapply(sid, function(x) {
+  tt = unlist(strsplit(x, split = " "))
+  len = length(tt)
+  tt2 = paste(tt[-len], collapse = "")
+  return(tt2)
+}))
+ttFrame$T2D = T2D
+print(table(ttFrame$T2D, useNA = "ifany"))
+
+g = iPlotFun::trajPlot(dat = ttFrame, 
+         time = "cellType", 
+         y = "prop.real", 
+         sid = "sid", 
+         grp = "T2D",
+         numericTime = FALSE,
+         order.time = NULL, 
+         xlab = "", 
+         ylab = "real cell type proportions", 
+         title = "es4Bulk.XinT2D", 
+         xAngle = 45
+)
+print(g)
+
+```
+
+
+Since we know the real cell type proportions for each subject, we
+calculate performance indices (RMSE, mAD, and R) and compare MuSiC and NNLS.
+We also compare the results based on original reference scRNAseq
+and those based on ensemble bootstrapping reference scRNAseq.
+Since the correlation between estimated cell type proportions and real cell type proportions might be confounded by cell types, we also calculated performance indices after regressing out cell types.
+```{r message = F, eval = T, echo = T, warning = F}
+##############
+# performance indices based on original reference scRNAseq
+print(res$performMat)
+
+# performance indices based on ensembling 3 bootstrapping reference scRNAseq
+print(res$performMat.boot)
+
+```
+
+
+We also can visualize the differences between estimated cell type proportions
+and real cell type proportions via scatter plots.
+
+For cell type proportions estimated via MuSiC, the scatter plots colored by subject id  are shown below.
+```{r message = F, eval = T, echo = T, warning = F}
+###############
+# scatter plot of estimated cell type proportions and
+#   true cell type proportions;
+# All subjects' cell type proportions are pooled.
+
+####
+# cell type proportions estimated by MuSiC
+####
+prop.MuSiC = res$prop.est.boot.LF$MuSiC
+print(dim(prop.MuSiC))
+print(head(prop.MuSiC))
+
+
+
+# scatter plot of true vs. estimated cell types
+# colored by subject id
+g = iPlotFun::scatterPlot(
+  dat = prop.MuSiC,
+  x = "prop.est",
+  y = "prop.real",
+  grp = "sid",
+  pointSize = 3,
+  xlab = "estimated cell type proportions", 
+  ylab = "true cell type proportions", 
+  title = "MuSiC: es4Bulk.XinT2D and esRef.EMTAB",
+  xAngle = 45,
+  addLine = TRUE,
+  intercept = 0,
+  slope = 1,
+  lineType = "dotted",
+  lColor = "black",
+  noLegendTitle = FALSE)
+print(g)
+```
+
+The scatter plot of true vs. estimated cell types colored by cell types is shown below.
+```{r message = F, eval = T, echo = T, warning = F}
+# scatter plot of true vs. estimated cell types
+# colored by cell types
+g2 = iPlotFun::scatterPlot(
+  dat = prop.MuSiC,
+  x = "prop.est",
+  y = "prop.real",
+  grp = "cellType",
+  pointSize = 3,
+  xlab = "estimated cell type proportions", 
+  ylab = "true cell type proportions", 
+  title = "MuSiC: es4Bulk.XinT2D and esRef.EMTAB",
+  xAngle = 45,
+  addLine = TRUE,
+  intercept = 0,
+  slope = 1,
+  lineType = "dotted",
+  lColor = "black",
+  noLegendTitle = FALSE)
+print(g2)
+
+```
+
+
+The above scatter plot shows obvious confounding effect of cell type on the correlation between estimated cell type proportions and real cell type proportions. After regressing out cell types, the scatter plot of true vs. estimated cell types colored by cell types is shown below.
+```{r message = F, eval = T, echo = T, warning = F}
+
+prop.MuSiC.resi = res$prop.est.boot.LF.resi$MuSiC
+print(dim(prop.MuSiC.resi))
+print(head(prop.MuSiC.resi))
+
+
+# scatter plot of true vs. estimated cell types
+# colored by cell types
+g2 = iPlotFun::scatterPlot(
+  dat = prop.MuSiC.resi,
+  x = "prop.est",
+  y = "prop.real",
+  grp = "cellType",
+  pointSize = 3,
+  xlab = "estimated cell type proportions", 
+  ylab = "true cell type proportions", 
+  title = "MuSiC: es4Bulk.XinT2D and esRef.EMTAB\n(after regressing out cell types)",
+  xAngle = 45,
+  addLine = TRUE,
+  intercept = 0,
+  slope = 1,
+  lineType = "dotted",
+  lColor = "black",
+  noLegendTitle = FALSE)
+print(g2)
+
+```
+
+
+
+
+
+For cell type proportions estimated via NNLS, the scatter plot colored by subject id is shown below.
+```{r message = F, eval = T, echo = T, warning = F}
+####
+# cell type proportions estimated by NNLS
+####
+prop.NNLS = res$prop.est.boot.LF$NNLS
+print(dim(prop.NNLS))
+print(head(prop.NNLS))
+
+# scatter plot of true vs. estimated cell types
+# colored by subject id
+g = iPlotFun::scatterPlot(
+  dat = prop.NNLS,
+  x = "prop.est",
+  y = "prop.real",
+  grp = "sid",
+  pointSize = 3,
+  xlab = "estimated cell type proportions", 
+  ylab = "true cell type proportions", 
+  title = "NNLS: es4Bulk.XinT2D and esRef.EMTAB",
+  xAngle = 45,
+  addLine = TRUE,
+  intercept = 0,
+  slope = 1,
+  lineType = "dotted",
+  lColor = "black",
+  noLegendTitle = FALSE)
+print(g)
+```
+
+The scatter plot colored by cell types is shown below.
+```{r message = F, eval = T, echo = T, warning = F}
+# scatter plot of true vs. estimated cell types
+# colored by cell types
+g2 = iPlotFun::scatterPlot(
+  dat = prop.NNLS,
+  x = "prop.est",
+  y = "prop.real",
+  grp = "cellType",
+  pointSize = 3,
+  xlab = "estimated cell type proportions", 
+  ylab = "true cell type proportions", 
+  title = "NNLS: es4Bulk.XinT2D and esRef.EMTAB",
+  xAngle = 45,
+  addLine = TRUE,
+  intercept = 0,
+  slope = 1,
+  lineType = "dotted",
+  lColor = "black",
+  noLegendTitle = FALSE)
+print(g2)
+```
+
+
+After regressing out cell types, the scatter plot of true vs. estimated cell types colored by cell types is shown below.
+```{r message = F, eval = T, echo = T, warning = F}
+
+prop.NNLS.resi = res$prop.est.boot.LF.resi$NNLS
+print(dim(prop.NNLS.resi))
+print(head(prop.NNLS.resi))
+
+
+# scatter plot of true vs. estimated cell types
+# colored by cell types
+g2 = iPlotFun::scatterPlot(
+  dat = prop.NNLS.resi,
+  x = "prop.est",
+  y = "prop.real",
+  grp = "cellType",
+  pointSize = 3,
+  xlab = "estimated cell type proportions", 
+  ylab = "true cell type proportions", 
+  title = "NNLS: es4Bulk.XinT2D and esRef.EMTAB\n(after regressing out cell types)",
+  xAngle = 45,
+  addLine = TRUE,
+  intercept = 0,
+  slope = 1,
+  lineType = "dotted",
+  lColor = "black",
+  noLegendTitle = FALSE)
+print(g2)
+
+```
+
+
+We next check the trajectories of pseudo $R^2$ across different reference scRNAseq datasets for each subject (MuSiC).Note that bootstrapping is for cells per subject. So, all subjects are still in the bootstrapping dataset. However, some cells within a subject might either not appear, or appear one or multiple times.
+
+```{r message = F, eval = T, echo = T, warning = F}
+
+##############
+# trajectories of pseudo R2 across different reference scRNAseq datasets;
+# cell type proportions estimated via MuSiC 
+# note that pseudo R2 can be negative
+R2.MuSiC.boot.LF = res$R2.MuSiCFrame.boot
+
+order.dataset = c("orig", paste("boot", 1:nBoot, sep=""))
+
+g = iPlotFun::trajPlot1Grp(dat = R2.MuSiC.boot.LF, 
+         time = "grp", 
+         y = "R2.MuSiC", 
+         sid = "sid", 
+         numericTime = FALSE,
+         order.time = order.dataset, 
+         xlab = "", 
+         ylab = "pseudo R2", 
+         title = "MuSiC: es4Bulk.XinT2D and esRef.EMTAB", 
+         xAngle = 45
+)
+print(g)
+```
+
+
+As a comparison, we check the trajectories of $R^2$ across different reference scRNAseq datasets for each subject (NNLS).
+```{r message = F, eval = T, echo = T, warning = F}
+# trajectories of R2 across different reference scRNAseq datasets;
+# cell type proportions estimated via NNLS 
+R2.NNLS.boot.LF=res$R2.NNLSFrame.boot
+
+g2 = iPlotFun::trajPlot1Grp(dat = R2.NNLS.boot.LF, 
+         time = "grp", 
+         y = "R2.NNLS", 
+         sid = "sid", 
+         numericTime = FALSE,
+         order.time = order.dataset, 
+         xlab = "", 
+         ylab = "R2", 
+         title = "NNLS: es4Bulk.XinT2D and esRef.EMTAB", 
+         xAngle = 45
+)
+print(g2)
+
+```
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+## es4Bulk.XinT2D to construct bulk RNAseq and esRef.EMTAB.fakeCT as reference
+
+We then use *esRef.EMTAB.fakeCT* scRNAseq data as reference to deconvolute cell type proportions of the bulk RNAseq dataset constructed by the scRNAseq dataset *es4Bulk.XinT2D*. Note that *esRef.EMTAB.fakeCT*'s true cell types are not alpha, beta, delta, and gamma. Hence, we expect the estimation of cell type proportions would be poor.
+
+
+```{r message = F, eval = T, echo = T, warning = F}
+#####################
+
+# load reference scRNAseq data
+data(esRef.EMTAB.fakeCT)
+print(esRef.EMTAB.fakeCT)
+
+# First do cell type deconvolution, then evaluate the estimates.
+# For testing purpose in this vignettes, 
+#  we set number of bootstrapping 'nBoot=3'.
+# In real applications, please set nBoot >= 20.
+# Since it is computationally intensive, it would take a long running time 
+#   when 'nBoot' is too large.
+res2 = MuSiCEvaluator2scRNAseq(es4Bulk = es4Bulk.XinT2D, esRef = esRef.EMTAB.fakeCT, 
+                              sid = "SubjectName", 
+                              cellType = "cellType", 
+                              nBoot = nBoot, 
+                              seed = 1234567,
+                              nPerm = nPerm)
+print(names(res2))
+
+```
+
+The trajectories of real cell type proportions for reference scRNAseq data are shown below:
+
+```{r message = F, eval = T, echo = T, warning = F}
+
+print(head(res2$prop.real.Ref.LF))
+
+g = iPlotFun::trajPlot1Grp(dat = res2$prop.real.Ref.LF, 
+         time = "cellType", 
+         y = "prop.real", 
+         sid = "sid", 
+         numericTime = FALSE,
+         order.time = NULL, 
+         xlab = "", 
+         ylab = "real cell type proportions", 
+         title = "esRef.EMTAB.fakeCT", 
+         xAngle = 45
+)
+print(g)
+
+```
+
+
+We expect high error rates (RMSE and mAD), but low Pearson correlation (R)
+```{r message = F, eval = T, echo = T, warning = F}
+##############
+# performance indices based on original reference scRNAseq
+print(res2$performMat)
+
+# performance indices based on ensembling 3 bootstrapping reference scRNAseq
+print(res2$performMat.boot)
+
+```
+
+
+
+For cell type proportions estimated via MuSiC, the scatter plots of estimated cell type proportions against real cell type proportions are shown below.
+```{r message = F, eval = T, echo = T, warning = F}
+###############
+# scatter plot of estimated cell type proportions and
+#   true cell type proportions;
+# All subjects' cell type proportions are pooled.
+
+####
+# cell type proportions estimated by MuSiC
+####
+prop.MuSiC2 = res2$prop.est.boot.LF$MuSiC
+print(dim(prop.MuSiC2))
+print(head(prop.MuSiC2))
+
+# scatter plot of true vs. estimated cell types
+# colored by subject id
+g = iPlotFun::scatterPlot(
+  dat = prop.MuSiC2,
+  x = "prop.est",
+  y = "prop.real",
+  grp = "sid",
+  pointSize = 3,
+  xlab = "estimated cell type proportions", 
+  ylab = "true cell type proportions", 
+  title = "MuSiC: es4Bulk.XinT2D and esRef.EMTAB.fakeCT",
+  xAngle = 45,
+  addLine = TRUE,
+  intercept = 0,
+  slope = 1,
+  lineType = "dotted",
+  lColor = "black",
+  noLegendTitle = FALSE)
+print(g)
+```
+
+```{r message = F, eval = T, echo = T, warning = F}
+
+
+# scatter plot of true vs. estimated cell types
+# colored by cell types
+g2 = iPlotFun::scatterPlot(
+  dat = prop.MuSiC2,
+  x = "prop.est",
+  y = "prop.real",
+  grp = "cellType",
+  pointSize = 3,
+  xlab = "estimated cell type proportions", 
+  ylab = "true cell type proportions", 
+  title = "MuSiC: es4Bulk.XinT2D and esRef.EMTAB.fakeCT",
+  xAngle = 45,
+  addLine = TRUE,
+  intercept = 0,
+  slope = 1,
+  lineType = "dotted",
+  lColor = "black",
+  noLegendTitle = FALSE)
+print(g2)
+
+```
+
+The above scatter plot shows obvious confounding effect of cell type on the correlation between estimated cell type proportions and real cell type proportions. After regressing out cell types, the scatter plot of true vs. estimated cell types colored by cell types is shown below.
+```{r message = F, eval = T, echo = T, warning = F}
+
+prop.MuSiC.resi2 = res2$prop.est.boot.LF.resi$MuSiC
+print(dim(prop.MuSiC.resi2))
+print(head(prop.MuSiC.resi2))
+
+
+# scatter plot of true vs. estimated cell types
+# colored by cell types
+g2 = iPlotFun::scatterPlot(
+  dat = prop.MuSiC.resi2,
+  x = "prop.est",
+  y = "prop.real",
+  grp = "cellType",
+  pointSize = 3,
+  xlab = "estimated cell type proportions", 
+  ylab = "true cell type proportions", 
+  title = "MuSiC: es4Bulk.XinT2D and esRef.EMTAB.fakeCT\n(after regressing out cell types)",
+  xAngle = 45,
+  addLine = TRUE,
+  intercept = 0,
+  slope = 1,
+  lineType = "dotted",
+  lColor = "black",
+  noLegendTitle = FALSE)
+print(g2)
+
+```
+
+
+For cell type proportions estimated via NNLS, the scatter plots are shown below.
+```{r message = F, eval = T, echo = T, warning = F}
+####
+# cell type proportions estimated by MuSiC
+####
+prop.NNLS2 = res2$prop.est.boot.LF$NNLS
+print(dim(prop.NNLS2))
+print(head(prop.NNLS2))
+
+# scatter plot of true vs. estimated cell types
+# colored by subject id
+g = iPlotFun::scatterPlot(
+  dat = prop.NNLS2,
+  x = "prop.est",
+  y = "prop.real",
+  grp = "sid",
+  pointSize = 3,
+  xlab = "estimated cell type proportions", 
+  ylab = "true cell type proportions", 
+  title = "NNLS: es4Bulk.XinT2D and esRef.EMTAB.fakeCT",
+  xAngle = 45,
+  addLine = TRUE,
+  intercept = 0,
+  slope = 1,
+  lineType = "dotted",
+  lColor = "black",
+  noLegendTitle = FALSE)
+print(g)
+
+
+# scatter plot of true vs. estimated cell types
+# colored by cell types
+g2 = iPlotFun::scatterPlot(
+  dat = prop.NNLS2,
+  x = "prop.est",
+  y = "prop.real",
+  grp = "cellType",
+  pointSize = 3,
+  xlab = "estimated cell type proportions", 
+  ylab = "true cell type proportions", 
+  title = "NNLS: es4Bulk.XinT2D and esRef.EMTAB.fakeCT",
+  xAngle = 45,
+  addLine = TRUE,
+  intercept = 0,
+  slope = 1,
+  lineType = "dotted",
+  lColor = "black",
+  noLegendTitle = FALSE)
+print(g2)
+```
+
+After regressing out cell types, the scatter plot of true vs. estimated cell types colored by cell types is shown below.
+```{r message = F, eval = T, echo = T, warning = F}
+
+prop.NNLS.resi2 = res2$prop.est.boot.LF.resi$NNLS
+print(dim(prop.NNLS.resi2))
+print(head(prop.NNLS.resi2))
+
+
+# scatter plot of true vs. estimated cell types
+# colored by cell types
+g2 = iPlotFun::scatterPlot(
+  dat = prop.NNLS.resi2,
+  x = "prop.est",
+  y = "prop.real",
+  grp = "cellType",
+  pointSize = 3,
+  xlab = "estimated cell type proportions", 
+  ylab = "true cell type proportions", 
+  title = "NNLS: es4Bulk.XinT2D and esRef.EMTAB.fakeCT\n(after regressing out cell types)",
+  xAngle = 45,
+  addLine = TRUE,
+  intercept = 0,
+  slope = 1,
+  lineType = "dotted",
+  lColor = "black",
+  noLegendTitle = FALSE)
+print(g2)
+
+```
+
+
+
+We also expect low-value and variable pseudo $R^2$ across different reference scRNAseq datasets for each subject (MuSiC).
+
+```{r message = F, eval = T, echo = T, warning = F}
+
+##############
+# trajectories of pseudo R2 across different reference scRNAseq datasets;
+# cell type proportions estimated via MuSiC 
+# note that pseudo R2 can be negative
+R2.MuSiC.boot.LF2 = res2$R2.MuSiCFrame.boot
+
+g = iPlotFun::trajPlot1Grp(dat = R2.MuSiC.boot.LF2, 
+         time = "grp", 
+         y = "R2.MuSiC", 
+         sid = "sid", 
+         numericTime = FALSE,
+         order.time = order.dataset, 
+         xlab = "", 
+         ylab = "pseudo R2", 
+         title = "MuSiC: es4Bulk.XinT2D and esRef.EMTAB.fakeCT", 
+         xAngle = 45
+)
+print(g)
+```
+
+
+Similarly, we expect low-value and variable $R^2$ across different reference scRNAseq datasets for each subject (NNLS).
+```{r message = F, eval = T, echo = T, warning = F}
+# trajectories of R2 across different reference scRNAseq datasets;
+# cell type proportions estimated via NNLS 
+R2.NNLS.boot.LF2=res2$R2.NNLSFrame.boot
+
+g2 = iPlotFun::trajPlot1Grp(dat = R2.NNLS.boot.LF2, 
+         time = "grp", 
+         y = "R2.NNLS", 
+         sid = "sid", 
+         numericTime = FALSE,
+         order.time = order.dataset, 
+         xlab = "", 
+         ylab = "R2", 
+         title = "NNLS: es4Bulk.XinT2D and esRef.EMTAB.fakeCT", 
+         xAngle = 45
+)
+print(g2)
+
+```
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+## esBulk.XinT2D as bulk RNAseq and esRef.EMTAB as reference
+
+The function *MuSiCEvaluator* is to evaluate estimated cell type proportions for Bulk RNAseq data in real applications, in which cell type info for the Bulk RNAseq data is unknown.
+
+We use *esRef.EMTAB* scRNAseq data as reference and use *esBulk.XinT2D* as bulk RNAseq data. Note that *esBulk.XinT2D* is constructed based on the scRNAseq data *es4Bulk.XinT2D*. Hence, we expect high-value and consistent pseudo $R^2$ based on results in previous section (*esRef.EMTAB* as reference and *es4Bulk.XinT2D* used to construct bulk RNAseq).
+
+
+```{r message = F, eval = T, echo = T, warning = F}
+#####################
+
+# load reference scRNAseq data
+data(esBulk.XinT2D)
+print(esBulk.XinT2D)
+
+# First do cell type deconvolution, then evaluate the estimates.
+# For testing purpose in this vignettes, 
+#  we set number of bootstrapping 'nBoot=3'.
+# In real applications, please set nBoot >= 20.
+# Since it is computationally intensive, it would take a long running time 
+#   when 'nBoot' is too large.
+res3 = MuSiCEvaluator(esBulk = esBulk.XinT2D, esRef = esRef.EMTAB, 
+                              sid = "SubjectName", 
+                              cellType = "cellType", 
+                              nBoot = nBoot, 
+                              seed = 1234567,
+                              nPerm = nPerm)
+print(names(res3))
+
+```
+
+The plot of pseudo $R^2$ across different reference scRNAseq datasets for each subject is shown below.
+```{r message = F, eval = T, echo = T, warning = F}
+
+##############
+# trajectories of pseudo R2 across different reference scRNAseq datasets;
+# cell type proportions estimated via MuSiC 
+# note that pseudo R2 can be negative
+R2.MuSiC.boot.LF3 = res3$R2.MuSiCFrame.boot
+
+g = iPlotFun::trajPlot1Grp(dat = R2.MuSiC.boot.LF3, 
+         time = "grp", 
+         y = "R2.MuSiC", 
+         sid = "sid", 
+         numericTime = FALSE,
+         order.time = order.dataset, 
+         xlab = "", 
+         ylab = "pseudo R2", 
+         title = "MuSiC: esBulk.XinT2D and esRef.EMTAB", 
+         xAngle = 45
+)
+print(g)
+```
+
+Similarly, the plot of $R^2$ across different reference scRNAseq datasets for each subject is shown below.
+```{r message = F, eval = T, echo = T, warning = F}
+# trajectories of R2 across different reference scRNAseq datasets;
+# cell type proportions estimated via NNLS 
+R2.NNLS.boot.LF3=res3$R2.NNLSFrame.boot
+
+g2 = iPlotFun::trajPlot1Grp(dat = R2.NNLS.boot.LF3, 
+         time = "grp", 
+         y = "R2.NNLS", 
+         sid = "sid", 
+         numericTime = FALSE,
+         order.time = order.dataset, 
+         xlab = "", 
+         ylab = "R2", 
+         title = "NNLS: esBulk.XinT2D and esRef.EMTAB", 
+         xAngle = 45
+)
+print(g2)
+
+```
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+# References
+
+Wang, X., Park, J., Susztak, K. et al. Bulk tissue cell type deconvolution with multi-subject single-cell expression reference. Nat Commun 10, 380 (2019). https://doi.org/10.1038/s41467-018-08023-x
+

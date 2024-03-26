@@ -1,0 +1,49 @@
+# created on June 7, 2021
+
+# calculate sample mean and sd of pseudo R2 for MuSiC and R2 for NNLS
+calR2MeanSD = function(obj.Evaluator)
+{
+
+  # subject ids in bulk RNAseq
+  sid.u = unique(obj.Evaluator$esBulk$subj)
+  
+  ###
+  # pseudo R2
+  ###
+  # calculate sample mean and variance of pseudo R2 for each subject
+  R2.MuSiC = obj.Evaluator$R2.MuSiCFrame.boot
+  ###
+  R2.MuSiC.sd = tapply(R2.MuSiC$R2.MuSiC, R2.MuSiC$sid, sd, na.rm=TRUE)
+  pos = match(sid.u, names(R2.MuSiC.sd))
+  R2.MuSiC.sd = R2.MuSiC.sd[pos]
+  
+  ###
+  R2.MuSiC.m = tapply(R2.MuSiC$R2.MuSiC, R2.MuSiC$sid, mean, na.rm=TRUE)
+  pos = match(sid.u, names(R2.MuSiC.m))
+  R2.MuSiC.m = R2.MuSiC.m[pos]
+  
+  ###
+  # R2
+  ###
+  # calculate sample mean and variance of pseudo R2 for each subject
+  R2.NNLS = obj.Evaluator$R2.NNLSFrame.boot
+  ###
+  R2.NNLS.sd = tapply(R2.NNLS$R2.NNLS, R2.NNLS$sid, sd, na.rm=TRUE)
+  pos = match(sid.u, names(R2.NNLS.sd))
+  R2.NNLS.sd = R2.NNLS.sd[pos]    
+  
+  ###
+  R2.NNLS.m = tapply(R2.NNLS$R2.NNLS, R2.NNLS$sid, mean, na.rm=TRUE)
+  pos = match(sid.u, names(R2.NNLS.m))
+  R2.NNLS.m = R2.NNLS.m[pos]
+  
+  res = cbind(R2.MuSiC.sd,
+              R2.MuSiC.m,
+              R2.NNLS.sd,
+              R2.NNLS.m)
+  
+  rownames(res) = sid.u
+  colnames(res) = c("R2.MuSiC.sd", "R2.MuSiC.m", "R2.NNLS.sd", "R2.NNLS.m")
+  
+  invisible(res)
+}

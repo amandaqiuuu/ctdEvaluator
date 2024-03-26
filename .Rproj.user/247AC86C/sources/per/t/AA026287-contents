@@ -1,0 +1,19 @@
+Package: ctdEvaluator
+Type: Package
+Title: Functions to Evaluate Results of Cell Type Deconvolution
+Version: 0.0.1
+Date: 2021-06-12
+Authors@R: c(
+             person("Weiliang", "Qiu", role=c("aut", "cre"),
+                     email = "Weiliang.Qiu@Sanofi.com"),
+             person("Mindy", "Zhang", role=c("aut", "ctb"),
+                     email = "Mindy.Zhang@sanofi.com")
+            )
+Maintainer: Weiliang Qiu <Weiliang.Qiu@sanofi.com>
+Depends: R (>= 3.6.0), Biobase, MuSiC, ggplot2, iPlotFun, stats, xbioc, nnls
+Imports: knitr, rmarkdown
+VignetteBuilder: knitr
+Description: Collection of functions to evaluate results of cell type deconvolution, such as MuSiC.
+License: GPL-2
+NeedsCompilation: no
+
